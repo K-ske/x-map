@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>立方晶 極点球儀 | Cubic Pole Globe</title>
+<style>
+  :root{
+    --bg: #0b0d10;
+    --panel: #14171c;
+    --panel-border: #23272e;
+    --ink: #d7dbe0;
+    --ink-dim: #838c96;
+    --accent-100: #e3a13d;
+    --accent-110: #3fb6ac;
+    --accent-111: #d9585a;
+    --dot: #7c8794;
+    --p1: #fde68a;
+    --p2: #93c5fd;
+    --p3: #f9a8d4;
+  }
+  *{ box-sizing: border-box; }
+  html, body{
+    margin:0; padding:0; height:100%; background: var(--bg);
+    font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Segoe UI", sans-serif;
+    color: var(--ink);
+    overflow: hidden;
+  }
+  #app{ position:relative; width:100%; height:100vh; }
+  #canvas-wrap{ position:absolute; inset:0; }
+  canvas{ display:block; touch-action: none; cursor: grab; }
+  canvas.dragging{ cursor: grabbing; }
+
+  #topbar{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; align-items:flex-start; gap:10px;
+    padding: 12px 14px;
+    background: linear-gradient(to bottom, rgba(11,13,16,0.92), rgba(11,13,16,0));
+    pointer-events:none;
+    flex-wrap: wrap;
+  }
+  #topbar > *{ pointer-events:auto; }
+  #title{
+    font-size: 13px; letter-spacing: 0.02em; color: var(--ink-dim);
+    white-space: nowrap; margin-right: 4px; margin-top: 8px;
+  }
+  #title b{ color: var(--ink); font-weight: 600; }
+
+  #searchwrap{ display:flex; flex-direction:column; gap:4px; }
+  #searchbox{
+    display:flex; align-items:center; gap:6px;
+    background: var(--panel); border:1px solid var(--panel-border);
+    border-radius: 8px; padding: 6px 8px;
+  }
+  #searchbox input{
+    background:transparent; border:none; outline:none;
+    color: var(--ink); font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 15px; width: 190px;
+  }
+  #searchbox input::placeholder{ color: var(--ink-dim); font-size: 13px; }
+  #searchbox button{
+    background: #2a2f37; border:1px solid #363c45; color: var(--ink);
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; cursor:pointer;
+  }
+  #searchbox button:hover{ background:#333944; }
+  #search-hint{ font-size: 10.5px; color: var(--ink-dim); padding-left: 2px; }
+  #search-msg{ font-size: 12px; color: var(--ink-dim); max-width: 220px; padding-left: 2px; }
+  #search-msg.err{ color: var(--accent-111); }
+
+  #reset-btn{
+    background: var(--panel); border:1px solid var(--panel-border); color: var(--ink);
+    border-radius: 8px; padding: 8px 10px; font-size: 12px; cursor:pointer; margin-top: 0;
+  }
+  #reset-btn:hover{ background:#1b1f25; }
+
+  #legend{
+    position:absolute; right:14px; top:14px;
+    background: var(--panel); border:1px solid var(--panel-border);
+    border-radius: 10px; padding: 10px 12px; font-size: 12px;
+    line-height: 1.9; color: var(--ink-dim);
+  }
+  #legend .row{ display:flex; align-items:center; gap:8px; }
+  #legend .sw{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
+
+  #info{
+    position:absolute; left:14px; bottom:14px;
+    background: var(--panel); border:1px solid var(--panel-border);
+    border-radius: 10px; padding: 12px 14px; min-width: 190px; max-width: 280px;
+    font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  #info .idx{ font-size: 20px; letter-spacing: 0.03em; color: var(--ink); }
+  #info .sub{ font-size: 11px; color: var(--ink-dim); margin-top: 4px; font-family: -apple-system, sans-serif; }
+  #info.empty .idx{ color: var(--ink-dim); font-size: 13px; }
+  #info .angles{ margin-top: 8px; border-top: 1px solid var(--panel-border); padding-top: 8px; }
+  #info .angles div{ font-size: 13px; margin-top: 3px; }
+  #info .pt-row{ display:flex; align-items:center; gap:6px; font-size:14px; margin-top:2px; }
+  #info .pt-sw{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+
+  #help{
+    position:absolute; right:14px; bottom:14px;
+    max-width: 230px; font-size: 11.5px; color: var(--ink-dim);
+    line-height: 1.6; text-align: right;
+  }
+  #help b{ color: var(--ink); }
+
+  #tooltip{
+    position:absolute; pointer-events:none; z-index: 5;
+    background: rgba(20,23,28,0.95); border:1px solid var(--panel-border);
+    border-radius: 6px; padding: 4px 8px; font-size: 13px;
+    font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+    color: var(--ink); display:none; white-space:nowrap;
+    transform: translate(-50%, -130%);
+  }
+
+  #inside-badge{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    pointer-events:none; display:none;
+    background: rgba(20,23,28,0.85); border:1px solid var(--panel-border);
+    border-radius: 999px; padding: 6px 14px; font-size: 12px; color: var(--ink);
+    letter-spacing: 0.02em;
+  }
+
+  @media (max-width: 560px){
+    #legend{ display:none; }
+    #help{ display:none; }
+    #title{ display:none; }
+    #searchbox input{ width: 130px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="canvas-wrap"></div>
+
+  <div id="topbar">
+    <div id="title">立方晶<br><b>極点球儀</b></div>
+    <div id="searchwrap">
+      <div id="searchbox">
+        <input id="search-input" type="text" placeholder="例: 111 ／ 1-11 ／ 100;010;111" inputmode="text">
+        <button id="search-btn">検索</button>
+      </div>
+      <div id="search-hint">複数点は「;」区切りで最大3点 (角度・線分も表示)</div>
+      <div id="search-msg"></div>
+    </div>
+    <button id="reset-btn">向き初期化</button>
+  </div>
+
+  <div id="legend">
+    <div class="row"><span class="sw" style="background:var(--accent-100)"></span>{001} キューブ極</div>
+    <div class="row"><span class="sw" style="background:var(--accent-110)"></span>{011} 菱面極</div>
+    <div class="row"><span class="sw" style="background:var(--accent-111)"></span>{111} 八面極</div>
+    <div class="row"><span class="sw" style="background:var(--dot)"></span>その他 (hkl)</div>
+  </div>
+
+  <div id="info" class="empty">
+    <div class="idx">点をタップ、または検索</div>
+    <div class="sub">&nbsp;</div>
+  </div>
+
+  <div id="help">
+    ドラッグ(指1本)で自由回転 ・ ホイール/ピンチで拡大縮小<br>
+    さらに拡大すると球の内側に入り、反対側の指数も透けて見えます<br>
+    タップすると周辺の指数も表示<br>
+    <b>[001] [011] [111]</b> は明るい極として強調表示
+  </div>
+
+  <div id="tooltip"></div>
+  <div id="inside-badge">内側表示中 ー 反対側の指数も見えています</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ---------------------------------------------------------------------
+  // Math helpers: Miller-index family generation
+  // ---------------------------------------------------------------------
+  function gcd2(a,b){ a=Math.abs(a); b=Math.abs(b); while(b){ [a,b]=[b, a%b]; } return a; }
+  function gcd3(a,b,c){ return gcd2(gcd2(a,b),c); }
+
+  function uniquePermutations(arr){
+    const seen = new Set(); const out = [];
+    const a = arr.slice();
+    function permute(l){
+      if(l === a.length){
+        const key = a.join(',');
+        if(!seen.has(key)){ seen.add(key); out.push(a.slice()); }
+        return;
+      }
+      for(let i=l;i<a.length;i++){
+        [a[l],a[i]] = [a[i],a[l]];
+        permute(l+1);
+        [a[l],a[i]] = [a[i],a[l]];
+      }
+    }
+    permute(0);
+    return out;
+  }
+
+  function generateFamily(base){
+    const perms = uniquePermutations(base);
+    const seen = new Set(); const out = [];
+    for(const p of perms){
+      const options = p.map(v => v === 0 ? [0] : [v, -v]);
+      (function cart(idx, cur){
+        if(idx === options.length){
+          const key = cur.join(',');
+          if(!seen.has(key)){ seen.add(key); out.push(cur.slice()); }
+          return;
+        }
+        for(const v of options[idx]){ cur.push(v); cart(idx+1, cur); cur.pop(); }
+      })(0, []);
+    }
+    return out;
+  }
+
+  const FAMILY_100 = generateFamily([1,0,0]);
+  const FAMILY_110 = generateFamily([1,1,0]);
+  const FAMILY_111 = generateFamily([1,1,1]);
+
+  const primaryKeySet = new Set(
+    [...FAMILY_100, ...FAMILY_110, ...FAMILY_111].map(p => p.join(','))
+  );
+
+  const MAX_INDEX = 4;
+  const secondaryPoints = [];
+  for(let h=-MAX_INDEX; h<=MAX_INDEX; h++){
+    for(let k=-MAX_INDEX; k<=MAX_INDEX; k++){
+      for(let l=-MAX_INDEX; l<=MAX_INDEX; l++){
+        if(h===0 && k===0 && l===0) continue;
+        if(gcd3(h,k,l) !== 1) continue;
+        const key = [h,k,l].join(',');
+        if(primaryKeySet.has(key)) continue;
+        secondaryPoints.push([h,k,l]);
+      }
+    }
+  }
+
+  function toVec3(p){
+    const len = Math.hypot(p[0], p[1], p[2]);
+    return new THREE.Vector3(p[0]/len, p[2]/len, p[1]/len);
+  }
+
+  function formatIndex(n){
+    return n < 0 ? (Math.abs(n) + '\u0305') : String(n);
+  }
+  function formatTriple(p){
+    return p.map(formatIndex).join('');
+  }
+  function reduceTriple(p){
+    const g = gcd3(p[0],p[1],p[2]);
+    if(g === 0) return null;
+    return [p[0]/g, p[1]/g, p[2]/g];
+  }
+
+  // ---------------------------------------------------------------------
+  // Three.js scene
+  // ---------------------------------------------------------------------
+  const wrap = document.getElementById('canvas-wrap');
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0d10);
+
+  const camera = new THREE.PerspectiveCamera(42, wrap.clientWidth/wrap.clientHeight, 0.1, 100);
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  wrap.appendChild(renderer.domElement);
+
+  // everything visible & rotatable lives in worldGroup; camera itself stays fixed,
+  // which lets us spin worldGroup freely with quaternions (no gimbal lock, no clamping).
+  const worldGroup = new THREE.Group();
+  scene.add(worldGroup);
+
+  const globeGeo = new THREE.SphereGeometry(0.965, 48, 32);
+  const globeMat = new THREE.MeshBasicMaterial({ color: 0x1c2733, transparent:true, opacity:0.92 });
+  const globe = new THREE.Mesh(globeGeo, globeMat);
+  worldGroup.add(globe);
+
+  const gridGeo = new THREE.SphereGeometry(0.97, 24, 16);
+  const gridWire = new THREE.LineSegments(
+    new THREE.WireframeGeometry(gridGeo),
+    new THREE.LineBasicMaterial({ color: 0x33414f, transparent:true, opacity:0.5 })
+  );
+  worldGroup.add(gridWire);
+
+  function greatCircle(axis){
+    const pts = [];
+    for(let i=0;i<=128;i++){
+      const t = (i/128) * Math.PI * 2;
+      let p;
+      if(axis === 'x') p = new THREE.Vector3(0, Math.cos(t), Math.sin(t));
+      else if(axis === 'z') p = new THREE.Vector3(Math.cos(t), Math.sin(t), 0);
+      else p = new THREE.Vector3(Math.cos(t), 0, Math.sin(t));
+      p.multiplyScalar(0.972);
+      pts.push(p);
+    }
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    return new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x4a5b6d, transparent:true, opacity:0.8 }));
+  }
+  worldGroup.add(greatCircle('y'));
+  worldGroup.add(greatCircle('x'));
+  worldGroup.add(greatCircle('z'));
+
+  const pointsGroup = new THREE.Group();
+  worldGroup.add(pointsGroup);
+
+  const secDotGeo = new THREE.SphereGeometry(0.016, 8, 8);
+  const secDotMat = new THREE.MeshBasicMaterial({ color: 0x7c8794 });
+  const secMesh = new THREE.InstancedMesh(secDotGeo, secDotMat, secondaryPoints.length);
+  const _m4 = new THREE.Matrix4();
+  const secVecs = [];
+  for(let i=0;i<secondaryPoints.length;i++){
+    const v = toVec3(secondaryPoints[i]);
+    secVecs.push(v);
+    _m4.makeTranslation(v.x, v.y, v.z);
+    secMesh.setMatrixAt(i, _m4);
+  }
+  secMesh.instanceMatrix.needsUpdate = true;
+  pointsGroup.add(secMesh);
+
+  const PRIMARY_STYLE = {
+    100: { color: 0xe3a13d, size: 0.040 },
+    110: { color: 0x3fb6ac, size: 0.032 },
+    111: { color: 0xd9585a, size: 0.036 },
+  };
+  const primaryMeshes = [];
+  function glowTexture(hexColor){
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const ctx = c.getContext('2d');
+    const col = new THREE.Color(hexColor);
+    const rgb = `${Math.round(col.r*255)},${Math.round(col.g*255)},${Math.round(col.b*255)}`;
+    const grad = ctx.createRadialGradient(32,32,0,32,32,32);
+    grad.addColorStop(0, `rgba(${rgb},0.9)`);
+    grad.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = grad; ctx.fillRect(0,0,64,64);
+    return new THREE.CanvasTexture(c);
+  }
+  function addPrimaryFamily(list, familyName){
+    const style = PRIMARY_STYLE[familyName];
+    const geo = new THREE.SphereGeometry(style.size, 16, 12);
+    const mat = new THREE.MeshBasicMaterial({ color: style.color });
+    for(const p of list){
+      const v = toVec3(p);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.copy(v);
+      pointsGroup.add(mesh);
+      primaryMeshes.push({ mesh, index:p, vec:v, family:familyName });
+
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowTexture(style.color), transparent:true, depthWrite:false, opacity:0.55
+      }));
+      glow.scale.set(style.size*7, style.size*7, 1);
+      glow.position.copy(v);
+      pointsGroup.add(glow);
+    }
+  }
+  addPrimaryFamily(FAMILY_100, 100);
+  addPrimaryFamily(FAMILY_110, 110);
+  addPrimaryFamily(FAMILY_111, 111);
+
+  function makeLabelSprite(triple, opts){
+    opts = opts || {};
+    const digits = triple.map(n => String(Math.abs(n)));
+    const negFlags = triple.map(n => n < 0);
+    const text = digits.join('');
+
+    const c = document.createElement('canvas');
+    const scale = 4;
+    c.width = 160*scale; c.height = 48*scale;
+    const ctx = c.getContext('2d');
+    ctx.scale(scale,scale);
+    const fontSize = opts.small ? 20 : 22;
+    ctx.font = `600 ${fontSize}px "SFMono-Regular", Menlo, Consolas, monospace`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+
+    const charWidth = ctx.measureText('0').width; // monospace, so every digit is the same width
+    const totalWidth = charWidth * text.length;
+    const startX = 80 - totalWidth/2;
+    const baselineY = 27;
+    const color = opts.color || '#eef1f4';
+    const shadow = '#0b0d10cc';
+    const barGap = fontSize * 0.16;
+    const barHeight = Math.max(1.4, fontSize * 0.09);
+
+    for(let i=0;i<text.length;i++){
+      const ch = text[i];
+      const x = startX + i*charWidth;
+
+      // measure this exact glyph's true top edge so the overline sits right
+      // above the numeral itself, not at a fixed offset (which is what
+      // caused the bar to drift out of place at different sizes).
+      const m = ctx.measureText(ch);
+      const glyphTop = baselineY - (m.actualBoundingBoxAscent || fontSize*0.72);
+
+      ctx.fillStyle = shadow;
+      ctx.fillText(ch, x+1, baselineY+1);
+      ctx.fillStyle = color;
+      ctx.fillText(ch, x, baselineY);
+
+      if(negFlags[i]){
+        const barY = glyphTop - barGap;
+        ctx.fillStyle = shadow;
+        ctx.fillRect(x+1, barY+1, charWidth, barHeight);
+        ctx.fillStyle = color;
+        ctx.fillRect(x, barY, charWidth, barHeight);
+      }
+    }
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent:true, depthTest:false });
+    const spr = new THREE.Sprite(mat);
+    const s = opts.small ? 0.195 : 0.22;
+    spr.scale.set(s, s*0.3, 1);
+    spr.renderOrder = 999;
+    return spr;
+  }
+  const primaryLabelMap = new Map(); // "h,k,l" -> label sprite, so we can hide it when highlighted
+  for(const item of primaryMeshes){
+    const label = makeLabelSprite(item.index);
+    label.position.copy(item.vec).multiplyScalar(1.13);
+    pointsGroup.add(label);
+    primaryLabelMap.set(item.index.join(','), label);
+  }
+
+  // ---------------------------------------------------------------------
+  // search-result markers, connecting geodesics, cluster (tap) labels
+  // ---------------------------------------------------------------------
+  const SEARCH_COLORS = [0xfde68a, 0x93c5fd, 0xf9a8d4];
+  let searchMarkers = [];   // {mesh, glow, label, vec, index}
+  let arcLines = [];
+  let clusterLabels = [];
+
+  function clearSearchMarkers(){
+    for(const m of searchMarkers){
+      pointsGroup.remove(m.mesh, m.glow, m.label);
+      if(m.hiddenPrimaryLabel) m.hiddenPrimaryLabel.visible = true;
+    }
+    searchMarkers = [];
+    for(const l of arcLines){ pointsGroup.remove(l); }
+    arcLines = [];
+  }
+  function clearClusterLabels(){
+    for(const l of clusterLabels){ pointsGroup.remove(l); }
+    clusterLabels = [];
+  }
+
+  function addSearchMarker(indexTriple, colorIdx){
+    const v = toVec3(indexTriple);
+    const color = SEARCH_COLORS[colorIdx % SEARCH_COLORS.length];
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.046, 20, 14), new THREE.MeshBasicMaterial({ color }));
+    mesh.position.copy(v);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(color), transparent:true, depthWrite:false, opacity:0.85 }));
+    glow.scale.set(0.4,0.4,1); glow.position.copy(v);
+    const label = makeLabelSprite(indexTriple, { color: '#' + color.toString(16).padStart(6,'0') });
+    label.position.copy(v).multiplyScalar(1.16);
+    pointsGroup.add(mesh, glow, label);
+    // if this point already has a permanent {001}/{011}/{111} label, hide that one
+    // instead of drawing both on top of each other
+    const permLabel = primaryLabelMap.get(indexTriple.join(','));
+    if(permLabel) permLabel.visible = false;
+    const entry = { mesh, glow, label, vec:v, index:indexTriple, color, hiddenPrimaryLabel: permLabel || null };
+    searchMarkers.push(entry);
+    return entry;
+  }
+
+  function addGeodesicArc(v1, v2, color){
+    const theta = v1.angleTo(v2);
+    if(theta < 1e-4) return;
+    const segs = 64;
+    const pts = [];
+    for(let i=0;i<=segs;i++){
+      const t = i/segs;
+      const a = Math.sin((1-t)*theta)/Math.sin(theta);
+      const b = Math.sin(t*theta)/Math.sin(theta);
+      const p = new THREE.Vector3(
+        v1.x*a + v2.x*b,
+        v1.y*a + v2.y*b,
+        v1.z*a + v2.z*b
+      ).normalize().multiplyScalar(1.001);
+      pts.push(p);
+    }
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.95 }));
+    pointsGroup.add(line);
+    arcLines.push(line);
+  }
+
+  function angleDeg(v1, v2){
+    return THREE.MathUtils.radToDeg(v1.angleTo(v2));
+  }
+
+  // ---------------------------------------------------------------------
+  // camera: fixed position, zoom only. All rotation happens on worldGroup.
+  // ---------------------------------------------------------------------
+  let camRadius = 3.1;
+  const MIN_R = 0.25, MAX_R = 7.5; // zooming below the globe radius (~0.965) takes you inside it
+  function updateCameraPosition(){
+    camera.position.set(0, 0, camRadius);
+    camera.up.set(0,1,0);
+    camera.lookAt(0,0,0);
+  }
+  // pleasant initial tilt so we aren't staring straight down an axis
+  worldGroup.quaternion.setFromEuler(new THREE.Euler(-0.55, 0.6, 0));
+  updateCameraPosition();
+
+  let targetQuat = null; // set during "focus on point" animation
+
+  // -------- free trackball-style rotation (quaternion based, no clamping) --------
+  // Works with mouse (drag + wheel) and touch (one-finger drag to rotate,
+  // two-finger pinch to zoom) via the unified Pointer Events API.
+  let dragging = false, lastX=0, lastY=0, moved=false;
+  let velX = 0, velY = 0; // inertia
+  const dom = renderer.domElement;
+  const ROT_SPEED = 0.0055;
+
+  const activePointers = new Map(); // pointerId -> {x,y}
+  let pinching = false, pinchStartDist = 0, pinchStartRadius = camRadius;
+
+  function pinchDistance(){
+    const pts = Array.from(activePointers.values());
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  }
+
+  dom.addEventListener('pointerdown', (e)=>{
+    dom.setPointerCapture(e.pointerId);
+    activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+
+    if(activePointers.size >= 2){
+      pinching = true;
+      dragging = false;
+      pinchStartDist = pinchDistance();
+      pinchStartRadius = camRadius;
+    } else {
+      pinching = false;
+      dragging = true; moved = false; lastX = e.clientX; lastY = e.clientY;
+      velX = 0; velY = 0;
+      targetQuat = null;
+      dom.classList.add('dragging');
+    }
+  });
+
+  dom.addEventListener('pointermove', (e)=>{
+    if(!activePointers.has(e.pointerId) && activePointers.size===0) updateTooltip(e);
+    if(!activePointers.has(e.pointerId)) return;
+    activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+
+    if(pinching && activePointers.size >= 2){
+      const dist = pinchDistance();
+      const scaleFactor = pinchStartDist / Math.max(dist, 1);
+      camRadius = Math.max(MIN_R, Math.min(MAX_R, pinchStartRadius * scaleFactor));
+      return;
+    }
+    if(!dragging) return;
+    updateTooltip(e);
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    if(Math.abs(dx)+Math.abs(dy) > 2) moved = true;
+    lastX = e.clientX; lastY = e.clientY;
+    applyRotation(dx, dy);
+    velX = dx; velY = dy;
+  });
+
+  function endPointer(e){
+    activePointers.delete(e.pointerId);
+    if(activePointers.size >= 2){
+      // still pinching with the remaining fingers: restart the pinch baseline
+      pinching = true;
+      pinchStartDist = pinchDistance();
+      pinchStartRadius = camRadius;
+    } else if(activePointers.size === 1){
+      // dropped from pinch (or a multi-touch mis-tap) back to a single finger:
+      // resume rotation from wherever that finger currently is
+      pinching = false;
+      const remaining = Array.from(activePointers.values())[0];
+      lastX = remaining.x; lastY = remaining.y;
+      dragging = true; moved = true; // suppress an accidental "click" after a pinch
+    } else {
+      if(dragging && !moved) handleClick(e);
+      pinching = false;
+      dragging = false;
+      dom.classList.remove('dragging');
+    }
+  }
+  window.addEventListener('pointerup', endPointer);
+  window.addEventListener('pointercancel', endPointer);
+
+  dom.addEventListener('wheel', (e)=>{
+    e.preventDefault();
+    camRadius += e.deltaY * 0.0025;
+    camRadius = Math.max(MIN_R, Math.min(MAX_R, camRadius));
+  }, { passive:false });
+
+  function applyRotation(dx, dy){
+    const qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), dy*ROT_SPEED);
+    const qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), dx*ROT_SPEED);
+    worldGroup.quaternion.premultiply(qx).premultiply(qy);
+  }
+
+  document.getElementById('reset-btn').addEventListener('click', ()=>{
+    clearSearchMarkers();
+    clearClusterLabels();
+    targetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.55, 0.6, 0));
+    camRadius = 3.1;
+    document.getElementById('search-input').value = '';
+    document.getElementById('search-msg').textContent = '';
+    setInfo(null);
+  });
+
+  // ---------------------------------------------------------------------
+  // picking — nearest point to the pointer in SCREEN SPACE (not a raycast
+  // hit-test), because the little dots are a tiny target to tap precisely.
+  // Once the camera has zoomed past the globe's surface (camRadius below
+  // the globe radius) we are "inside" the globe: the globe shell is culled
+  // by three.js from the inside automatically, so every point — including
+  // ones that used to be on the far/opposite side — becomes reachable.
+  // ---------------------------------------------------------------------
+  const GLOBE_RADIUS = 0.965;
+  const tooltipEl = document.getElementById('tooltip');
+
+  function insideGlobe(){ return camRadius <= GLOBE_RADIUS + 0.05; }
+
+  function collectCandidates(){
+    worldGroup.updateMatrixWorld(true);
+    const inside = insideGlobe();
+    const list = [];
+    for(let i=0;i<secondaryPoints.length;i++){
+      const world = secVecs[i].clone().applyMatrix4(worldGroup.matrixWorld);
+      if(!inside && world.z <= 0.02) continue; // hidden on the far side of the globe
+      list.push({ local: secVecs[i], world, index: secondaryPoints[i], isPrimary:false });
+    }
+    for(const item of primaryMeshes){
+      const world = item.vec.clone().applyMatrix4(worldGroup.matrixWorld);
+      if(!inside && world.z <= 0.02) continue;
+      list.push({ local: item.vec, world, index: item.index, isPrimary:true });
+    }
+    return list;
+  }
+
+  function nearestToScreen(clientX, clientY, maxDist){
+    const rect = dom.getBoundingClientRect();
+    const cx = clientX - rect.left, cy = clientY - rect.top;
+    const candidates = collectCandidates();
+    let best = null, bestD = Infinity;
+    for(const c of candidates){
+      const p = c.world.clone().project(camera);
+      if(p.z > 1) continue; // behind the camera's near plane
+      const sx = (p.x*0.5+0.5) * rect.width, sy = (-p.y*0.5+0.5) * rect.height;
+      const d = Math.hypot(sx - cx, sy - cy);
+      if(d < bestD){ bestD = d; best = c; }
+    }
+    if(best && bestD <= maxDist) return { hit: best, dist: bestD, candidates, rect, cx, cy };
+    return null;
+  }
+
+  function updateTooltip(e){
+    const found = nearestToScreen(e.clientX, e.clientY, 26);
+    if(found){
+      tooltipEl.style.display = 'block';
+      tooltipEl.style.left = e.clientX + 'px';
+      tooltipEl.style.top = e.clientY + 'px';
+      tooltipEl.textContent = formatTriple(found.hit.index);
+      dom.style.cursor = dragging ? 'grabbing' : 'pointer';
+    } else {
+      tooltipEl.style.display = 'none';
+      dom.style.cursor = dragging ? 'grabbing' : 'grab';
+    }
+  }
+
+  function handleClick(e){
+    const found = nearestToScreen(e.clientX, e.clientY, 55);
+    if(!found) return;
+    clearSearchMarkers();
+    clearClusterLabels();
+    addSearchMarker(found.hit.index, 0);
+    setInfo([found.hit.index]);
+    showNearbyLabels(found);
+  }
+
+  // -------- show labels for points clustered around a tap --------
+  function showNearbyLabels(found){
+    const { candidates, rect, cx, cy, hit } = found;
+    const scored = [];
+    for(const c of candidates){
+      const p = c.world.clone().project(camera);
+      if(p.z > 1) continue;
+      const sx = (p.x*0.5+0.5) * rect.width, sy = (-p.y*0.5+0.5) * rect.height;
+      const d = Math.hypot(sx - cx, sy - cy);
+      if(d < 160) scored.push({ c, d });
+    }
+    scored.sort((a,b)=>a.d-b.d);
+    const picked = scored.slice(0, 40);
+    for(const { c } of picked){
+      if(c.isPrimary) continue;              // already permanently labeled
+      if(c.index === hit.index) continue;    // already has the big search-marker label
+      const label = makeLabelSprite(c.index, { small:true, color:'#c6ccd3' });
+      label.position.copy(c.local).multiplyScalar(1.09);
+      pointsGroup.add(label);
+      clusterLabels.push(label);
+    }
+  }
+
+  function setInfo(indexList){
+    const el = document.getElementById('info');
+    if(!indexList || !indexList.length){
+      el.classList.add('empty');
+      el.innerHTML = '<div class="idx">点をタップ、または検索</div><div class="sub">&nbsp;</div>';
+      return;
+    }
+    el.classList.remove('empty');
+    if(indexList.length === 1){
+      const p = indexList[0];
+      const t = formatTriple(p);
+      let fam = 'その他';
+      const key = p.join(',');
+      if(primaryKeySet.has(key)){
+        if(FAMILY_100.some(q=>q.join(',')===key)) fam = '{001} 族';
+        else if(FAMILY_110.some(q=>q.join(',')===key)) fam = '{011} 族';
+        else if(FAMILY_111.some(q=>q.join(',')===key)) fam = '{111} 族';
+      }
+      el.innerHTML = `<div class="idx">(${t}) &nbsp;/&nbsp; [${t}]</div>
+        <div class="sub">面 (hkl) ・ 方位 [uvw] ・ ${fam}</div>`;
+      return;
+    }
+    // multi-point: list each + pairwise angles
+    let html = '';
+    indexList.forEach((p,i)=>{
+      const color = '#' + SEARCH_COLORS[i % SEARCH_COLORS.length].toString(16).padStart(6,'0');
+      html += `<div class="pt-row"><span class="pt-sw" style="background:${color}"></span>P${i+1}: (${formatTriple(p)}) / [${formatTriple(p)}]</div>`;
+    });
+    html += '<div class="angles">';
+    for(let i=0;i<indexList.length;i++){
+      for(let j=i+1;j<indexList.length;j++){
+        const a = angleDeg(toVec3(indexList[i]), toVec3(indexList[j]));
+        html += `<div>∠(P${i+1}-P${j+1}) = ${a.toFixed(2)}°</div>`;
+      }
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  // ---------------------------------------------------------------------
+  // search: single, or 2–3 points separated by ; | newline or bracket groups
+  // ---------------------------------------------------------------------
+  function parseOneIndex(raw){
+    let s = raw.trim();
+    if(!s) return null;
+    s = s.replace(/[\[\]\(\)]/g, '');
+    s = s.replace(/(\d)\u0305/g, '-$1');
+    if(/[\s,]/.test(s)){
+      const parts = s.split(/[\s,]+/).filter(Boolean).map(Number);
+      if(parts.length >= 3 && parts.slice(0,3).every(n => Number.isFinite(n))) return parts.slice(0,3).map(n=>Math.trunc(n));
+      return null;
+    }
+    const nums = []; let sign = 1; let i = 0;
+    while(i < s.length && nums.length < 3){
+      const ch = s[i];
+      if(ch === '-'){ sign = -1; i++; continue; }
+      if(ch === '+'){ sign = 1; i++; continue; }
+      if(/\d/.test(ch)){ nums.push(sign * parseInt(ch,10)); sign = 1; i++; continue; }
+      i++;
+    }
+    return nums.length === 3 ? nums : null;
+  }
+
+  function parseMultiIndices(raw){
+    const bracketGroups = raw.match(/\[[^\]\[]*\]|\([^\)\(]*\)/g);
+    if(bracketGroups && bracketGroups.length >= 2){
+      const out = bracketGroups.slice(0,3).map(parseOneIndex).filter(Boolean);
+      return out.length >= 2 ? out : null;
+    }
+    if(/[;|\n]/.test(raw)){
+      const parts = raw.split(/[;|\n]+/).map(s=>s.trim()).filter(Boolean);
+      if(parts.length >= 2){
+        const out = parts.slice(0,3).map(parseOneIndex).filter(Boolean);
+        return out.length >= 2 ? out : null;
+      }
+    }
+    const single = parseOneIndex(raw);
+    return single ? [single] : null;
+  }
+
+  function faceCameraQuat(v){
+    return new THREE.Quaternion().setFromUnitVectors(v.clone().normalize(), new THREE.Vector3(0,0,1));
+  }
+
+  const searchInput = document.getElementById('search-input');
+  const searchMsg = document.getElementById('search-msg');
+  const searchBtn = document.getElementById('search-btn');
+
+  function runSearch(){
+    const raw = searchInput.value;
+    const groups = parseMultiIndices(raw);
+    if(!groups || groups.some(g => g[0]===0 && g[1]===0 && g[2]===0)){
+      searchMsg.textContent = '形式が読み取れません (例: 111 / 100;010;111)';
+      searchMsg.classList.add('err');
+      return;
+    }
+    const reduced = groups.map(reduceTriple);
+    clearSearchMarkers();
+    clearClusterLabels();
+
+    const markers = reduced.map((p, i) => addSearchMarker(p, i));
+    for(let i=0;i<markers.length;i++){
+      for(let j=i+1;j<markers.length;j++){
+        addGeodesicArc(markers[i].vec, markers[j].vec, 0xfff3c4);
+      }
+    }
+    const avg = new THREE.Vector3();
+    markers.forEach(m => avg.add(m.vec));
+    avg.normalize();
+    targetQuat = faceCameraQuat(avg);
+
+    setInfo(reduced);
+    if(reduced.length === 1){
+      searchMsg.textContent = `→ (${formatTriple(reduced[0])}) を表示`;
+    } else {
+      searchMsg.textContent = `→ ${reduced.length}点を表示・線分と角度を計算`;
+    }
+    searchMsg.classList.remove('err');
+  }
+  searchBtn.addEventListener('click', runSearch);
+  searchInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') runSearch(); });
+
+  // ---------------------------------------------------------------------
+  // render loop
+  // ---------------------------------------------------------------------
+  const insideBadge = document.getElementById('inside-badge');
+  let badgeShown = false;
+
+  function animate(){
+    requestAnimationFrame(animate);
+
+    const inside = insideGlobe();
+    if(inside !== badgeShown){
+      insideBadge.style.display = inside ? 'block' : 'none';
+      badgeShown = inside;
+    }
+
+    if(!dragging){
+      if(targetQuat){
+        worldGroup.quaternion.slerp(targetQuat, 0.12);
+        if(worldGroup.quaternion.angleTo(targetQuat) < 0.001) targetQuat = null;
+      } else if(Math.abs(velX) + Math.abs(velY) > 0.05){
+        applyRotation(velX, velY);
+        velX *= 0.94; velY *= 0.94;
+      }
+    }
+
+    updateCameraPosition();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', ()=>{
+    camera.aspect = wrap.clientWidth / wrap.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  });
+
+})();
+</script>
+</body>
+</html>
